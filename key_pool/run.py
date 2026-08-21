@@ -9,6 +9,7 @@
 """
 
 import argparse
+import os
 import socket
 import sys
 from pathlib import Path
@@ -57,10 +58,16 @@ def main(argv=None):
     except ConfigError as exc:
         print(f"[配置错误] {exc}", file=sys.stderr)
         return 2
-    if args.host:
-        object.__setattr__(settings, "host", args.host)
-    if args.port:
-        object.__setattr__(settings, "port", args.port)
+    # 覆盖优先级：命令行参数 > 环境变量（容器部署用 HOST/PORT）> 配置文件。
+    # 容器里必须监听 0.0.0.0，否则端口映射的流量进不到容器的 loopback。
+    env_host = os.environ.get("HOST")
+    env_port = os.environ.get("PORT")
+    host = args.host or env_host
+    port = args.port or (int(env_port) if env_port and env_port.isdigit() else None)
+    if host:
+        object.__setattr__(settings, "host", host)
+    if port:
+        object.__setattr__(settings, "port", port)
 
     logger = setup_logging(settings, debug=args.dev)
 

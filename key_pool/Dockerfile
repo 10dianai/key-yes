@@ -14,7 +14,8 @@ COPY static/ static/
 
 # 数据目录（挂载卷持久化 pool_data.json / panel_auth.json / logs）
 RUN mkdir -p /data
-ENV KEPOOL_DATA_DIR=/data
+# 容器内必须监听 0.0.0.0，端口映射的流量才能进到服务（run.py 会读此环境变量）
+ENV HOST=0.0.0.0
 
 # 默认配置（敏感配置用 volume 覆盖或 local 配置）
 COPY key_pool_config.json /data/key_pool_config.json

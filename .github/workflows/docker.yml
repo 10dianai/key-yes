@@ -55,9 +55,17 @@ jobs:
         run: |
           docker run -d --name key-pool-smoke -p 18787:8787 \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          ok=0
           for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:18787/healthz && break || sleep 2
+            if curl -sf http://127.0.0.1:18787/healthz; then ok=1; break; fi
+            sleep 2
           done
-          curl -sf http://127.0.0.1:18787/healthz
+          if [ "$ok" != "1" ]; then
+            echo "===== 冒烟失败，容器日志 ====="
+            docker logs key-pool-smoke
+            docker rm -f key-pool-smoke
+            exit 1
+          fi
+          curl -sf http://127.0.0.1:18787/admin/panel/status
           echo "镜像冒烟通过"
           docker rm -f key-pool-smoke
