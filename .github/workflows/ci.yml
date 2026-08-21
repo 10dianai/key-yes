@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: key_pool/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          cd key_pool
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: |
+          cd key_pool
+          python -m pytest tests/ -v
+
+      - name: Smoke test (service boots)
+        run: |
+          cd key_pool
+          python run.py --port 8787 &
+          for i in $(seq 1 20); do
+            curl -sf http://127.0.0.1:8787/healthz && break || sleep 1
+          done
+          curl -sf http://127.0.0.1:8787/healthz
+          curl -sf http://127.0.0.1:8787/admin/panel/status
+          curl -s -o /dev/null -w "面板页面 HTTP %{http_code}\n" http://127.0.0.1:8787/
