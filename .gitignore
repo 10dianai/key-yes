@@ -1,0 +1,26 @@
+# 敏感配置（含邮箱密码、API Key 等）
+mistral_mail_config.json
+mistral_mail_config.local.json
+mistral_accounts.txt
+ab_code.txt
+ab_probe_email.txt
+
+# 生成的账号 / 密钥 / 错误记录
+mistral_keys/
+mistral_accounts_created/
+mistral_errors/
+mistral_batch.log
+
+# Key 池（池数据与本地密钥覆盖，含真实 Key，严禁提交）
+key_pool/pool_data.json
+key_pool/pool_data.json.bak*
+key_pool/key_pool_config.local.json
+key_pool/panel_auth.json
+key_pool/logs/
+key_pool/_run.log
+key_pool/_*.log
+
+# Python
+__pycache__/
+*.pyc
+.zcode/

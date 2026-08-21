@@ -1,0 +1,30 @@
+{
+  "host": "127.0.0.1",
+  "port": 8787,
+  "upstream_base_url": "https://api.mistral.ai",
+  "upstream_proxy": "http://127.0.0.1:7897",
+
+  "pool_api_keys": [
+    "sk-pool-change-me-0001"
+  ],
+  "admin_key": "admin-change-me-0001",
+
+  "default_model": "mistral-small-latest",
+
+  "models_list": [
+    "mistral-large-latest",
+    "mistral-medium-latest",
+    "mistral-small-latest",
+    "magistral-medium-latest",
+    "magistral-small-latest",
+    "ministral-8b-latest",
+    "pixtral-large-latest",
+    "mistral-embed",
+    "voxtral-mini-tts-latest",
+    "voxtral-small-latest"
+  ],
+
+  "key_retry_on_rate_limit": 2,
+  "request_timeout_seconds": 300,
+  "data_file": "pool_data.json"
+}
