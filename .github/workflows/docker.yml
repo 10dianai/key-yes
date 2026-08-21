@@ -51,6 +51,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Make package public
+        # GHCR 包可见性独立于仓库（org 包的 PATCH API 在外部 token 下常 404，
+        # 是已知坑），在 workflow 内用 GITHUB_TOKEN 改最可靠。幂等，失败不阻断。
+        continue-on-error: true
+        run: |
+          for i in $(seq 1 5); do
+            code=$(curl -s -o /tmp/pkg.json -w "%{http_code}" -X PATCH \
+              "https://api.github.com/orgs/${{ github.repository_owner }}/packages/container/key-yes" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              -d '{"visibility":"public"}')
+            echo "尝试 $i: HTTP $code"
+            [ "$code" = "200" ] && break
+            cat /tmp/pkg.json | head -5
+            sleep 5
+          done
+
       - name: Smoke test image
         run: |
           docker run -d --name key-pool-smoke -p 18787:8787 \
