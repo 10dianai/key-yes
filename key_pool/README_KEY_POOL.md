@@ -67,6 +67,12 @@ python run.py --port 9000 # 覆盖端口
   `panel_auth.json`，已被 git 忽略）
 - **之后进入**：输入密码登录，会话 token 有效 12 小时；连错 5 次锁 1 分钟
 - 密码只用于网页面板；脚本调用管理 API 仍用 `admin_key`（`X-Admin-Key` 头）
+- **修改密码（服务运行中可用，立即生效，无需重启）**：
+  ```bash
+  python set_panel_password.py            # 交互式输入（密码不进命令行历史）
+  python set_panel_password.py <新密码>   # 直接指定
+  ```
+  手动改文件同理：`panel_auth.json` 的 `hash` = PBKDF2-SHA256(密码, `salt`, 200000 轮) 的 hex
 - 忘记密码：停服务删 `panel_auth.json`，重启恢复"首次设置"状态
 
 前端是独立文件（`static/admin.html` + `admin.js`）——改前端刷新页面即可，

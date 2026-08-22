@@ -66,9 +66,26 @@ def _no_key_response(style: str):
     return openai_error("Key 池为空或没有可用 Key", status=503, err_type="pool_empty")
 
 
-# ---- 模型列表（三种格式共用同一份上游真实模型） ----
+# ---- 模型列表（三种格式共用；自动获取上游真实模型 + TTL 缓存） ----
+
+MODELS_CACHE_TTL = 300  # 模型列表缓存 5 分钟，避免每次请求都打上游
+
 
 async def _collect_models(app):
+    """合并配置置顶模型与上游真实模型列表，带 TTL 缓存。
+
+    - 上游正常：配置的 models_list 置顶 + 上游自动发现的模型（去重合并），
+      结果缓存 5 分钟；上游新增模型最迟 5 分钟自动出现
+    - 上游异常/池子为空：返回上次缓存（比配置兜底更强），从未成功过则只剩配置
+    - models_list 完全可以留空（[]），即列表完全来自上游
+    """
+    import time
+
+    cache = getattr(app.state, "models_cache", None)
+    now = time.monotonic()
+    if cache and now - cache[1] < MODELS_CACHE_TTL:
+        return list(cache[0])
+
     models = list(app.state.settings.models_list or [app.state.settings.default_model])
     try:
         response = await app.state.upstream.call("GET", "/v1/models")
@@ -78,7 +95,9 @@ async def _collect_models(app):
                 model_id = item.get("id") if isinstance(item, dict) else item
                 if model_id and model_id not in seen:
                     models.append(model_id)
+            app.state.models_cache = (list(models), now)
     except (NoKeyAvailable, UpstreamError):
+        # 上游不可用：维持配置兜底（缓存若存在上面已经返回了）
         pass
     return models
 

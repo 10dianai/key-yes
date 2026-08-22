@@ -11,18 +11,7 @@
 
   "default_model": "mistral-small-latest",
 
-  "models_list": [
-    "mistral-large-latest",
-    "mistral-medium-latest",
-    "mistral-small-latest",
-    "magistral-medium-latest",
-    "magistral-small-latest",
-    "ministral-8b-latest",
-    "pixtral-large-latest",
-    "mistral-embed",
-    "voxtral-mini-tts-latest",
-    "voxtral-small-latest"
-  ],
+  "models_list": [],
 
   "key_retry_on_rate_limit": 2,
   "request_timeout_seconds": 300,

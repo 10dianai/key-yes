@@ -65,6 +65,42 @@ class TestOpenAIGateway:
         ids = [m["id"] for m in r.json()["data"]]
         assert "mistral-small-latest" in ids and "mistral-large-latest" in ids
 
+    def test_models_cached(self, seeded_client):
+        """模型列表自动获取上游并缓存：多次请求只打一次上游。"""
+        transport = seeded_client.app.state.http._transport
+        calls = {"n": 0}
+        original_handler = transport.handler
+
+        def counting(request):
+            if request.url.path == "/v1/models":
+                calls["n"] += 1
+            return original_handler(request)
+
+        transport.handler = counting
+        for _ in range(3):
+            r = seeded_client.get("/v1/models", headers=POOL_H)
+            assert r.status_code == 200
+        assert calls["n"] == 1, f"3 次请求应只调上游 1 次，实际 {calls['n']}"
+
+    def test_models_cache_survives_empty_pool(self, seeded_client):
+        """缓存过后空池也能返回模型列表（兜底）。"""
+        r = seeded_client.get("/v1/models", headers=POOL_H)
+        cached = [m["id"] for m in r.json()["data"]]
+        seeded_client.app.state.store.clear()
+        r = seeded_client.get("/v1/models", headers=POOL_H)
+        assert [m["id"] for m in r.json()["data"]] == cached
+
+    def test_models_auto_from_upstream(self, app):
+        """models_list 为空时列表完全来自上游自动发现。"""
+        object.__setattr__(app.state.settings, "models_list", ())
+        app.state.store.add(GOOD_KEY)
+        from fastapi.testclient import TestClient
+        with TestClient(app) as c:
+            r = c.get("/v1/models", headers=POOL_H)
+            ids = [m["id"] for m in r.json()["data"]]
+        assert "mistral-small-latest" in ids  # 来自上游而非配置
+        assert "mistral-large-latest" in ids
+
     def test_models_claude_style(self, seeded_client):
         r = seeded_client.get("/v1/models", headers={"x-api-key": POOL_KEY})
         assert r.json()["data"][0]["type"] == "model"
