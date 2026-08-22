@@ -1,6 +1,8 @@
 services:
   key-pool:
-    build: .
+    # 直接用 GHCR 镜像（CI 自动构建）；国内机器拉不动可换 build: . 本地构建
+    image: ghcr.io/10dianai/key-yes:main
+    # build: .
     container_name: mistral-key-pool
     ports:
       - "8787:8787"
@@ -9,8 +11,8 @@ services:
       - ./pool_data.json:/data/pool_data.json
       - ./panel_auth.json:/data/panel_auth.json
       - ./logs:/data/logs
-      # 需要覆盖配置时取消注释（例如改 pool_api_keys / admin_key / 代理）：
-      # - ./key_pool_config.local.json:/data/key_pool_config.local.json
+      # 覆盖配置（改 pool_api_keys / admin_key / upstream_proxy 在这里）：
+      - ./key_pool_config.local.json:/data/key_pool_config.local.json
     restart: unless-stopped
     # 国内机器需要代理时取消注释并修改地址：
     # environment:
