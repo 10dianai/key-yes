@@ -116,8 +116,21 @@ class TestPanelAuthUnit:
         path = tmp_path / "panel_auth.json"
         path.write_text("garbage", encoding="utf-8")
         auth = PanelAuth(path)
-        assert auth.has_password()
+        # 损坏文件视为未初始化：首屏会重新弹"初始化面板"而不是死锁在登录框
+        assert not auth.has_password()
         assert not auth.check_password("anything")
+
+    def test_empty_auth_file_is_uninitialized(self, tmp_path):
+        """部署时 touch 出的空文件不算已初始化（修复的 bug 场景）。"""
+        from app.panel_auth import PanelAuth
+        path = tmp_path / "panel_auth.json"
+        path.write_text("", encoding="utf-8")
+        auth = PanelAuth(path)
+        assert not auth.has_password()
+        # 可以直接走 setup 流程设置新密码
+        auth.set_password("new-pass-123")
+        assert auth.has_password()
+        assert auth.check_password("new-pass-123")
 
     def test_fail_lockout(self, tmp_path):
         from app.panel_auth import PanelAuth
