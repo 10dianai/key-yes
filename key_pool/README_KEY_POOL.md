@@ -185,21 +185,120 @@ API 集成（mock 上游：鉴权/三格式/TTS/导入/面板密码全流程/暴
 
 ## 服务器部署
 
-### 直接跑（Linux systemd）
+> 推荐 Docker 方式（最省事）；不想用 Docker 的看文末 systemd 方式。
+> 部署完成后：浏览器打开 `http://服务器IP:8787/` → 用默认密码 `admin123` 登录
+> → 系统强制要求你改成自己的密码 → 进入面板。
+
+### 方式一：Docker 部署（推荐）
+
+**第 1 步：建目录、放配置**
 
 ```bash
-pip install -r requirements.txt
-# 配置：key_pool_config.json 里 host 改 "0.0.0.0"，密钥改成强随机值
-python -c "import secrets; print('sk-pool-' + secrets.token_hex(16))"
+mkdir -p /opt/key-pool/data && cd /opt/key-pool
+```
 
+创建 `docker-compose.yml`（内容就这些，直接复制）：
+
+```yaml
+services:
+  key-pool:
+    image: ghcr.io/10dianai/key-yes:main
+    container_name: mistral-key-pool
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+```
+
+**第 2 步：启动**
+
+```bash
+docker compose up -d
+docker compose logs -f        # 看到"启动"横幅即成功，Ctrl+C 退出日志
+```
+
+首次启动会自动在 `./data/key_pool_config.json` 生成默认配置（直连 Mistral、
+面板默认密码 `admin123`）。**全部状态都在 `./data` 目录里**——升级、重建容器
+都不丢数据。
+
+**第 3 步：云控制台放行端口**
+
+阿里云/腾讯云等：控制台 → 安全组 → 入方向规则 → 放行 **TCP 8787**。
+（服务器本机防火墙：`ufw allow 8787` 或 `firewall-cmd --add-port=8787/tcp --permanent && firewall-cmd --reload`）
+
+**第 4 步：验证**
+
+```bash
+curl http://127.0.0.1:8787/healthz
+# 期望输出 {"status":"ok","keys":{...}}
+```
+
+浏览器打开 `http://服务器IP:8787/` → `admin123` 登录 → 强制改密 → 进面板导入 Key。
+
+### 日常操作
+
+| 操作 | 命令 |
+|---|---|
+| 查看日志 | `docker compose logs -f` |
+| 重启 | `docker restart mistral-key-pool` |
+| 升级版本 | `docker compose pull && docker compose up -d` |
+| 改面板密码 | 编辑 `./data/key_pool_config.json` 的 `panel_password` 写明文 → `docker restart mistral-key-pool` |
+| 改 API 密钥 | 同上，编辑 `pool_api_keys` / `admin_key` → 重启 |
+| 备份 | 备份整个 `./data` 目录 |
+| 换机器迁移 | 拷贝 `./data` 目录 + 同样三步部署 |
+
+### 国内服务器必须配代理（海外服务器跳过）
+
+国内机器直连不了 `api.mistral.ai`，症状：面板能开但**调用全部失败**。修复：
+
+```bash
+# 编辑 ./data/key_pool_config.json，加一行（改成你实际的代理地址）：
+"upstream_proxy": "http://host.docker.internal:7897"
+
+# 代理跑在宿主机上时用 host.docker.internal；跑在其他机器上写它的 IP
+docker restart mistral-key-pool
+```
+
+### 公网安全清单（对外服务必做）
+
+1. `pool_api_keys` 和 `admin_key` 换成强随机值：
+   `python3 -c "import secrets; print('sk-pool-' + secrets.token_hex(16))"`
+2. 前置 nginx/caddy 做 HTTPS（裸 HTTP 公网传输 Key 等于裸奔）
+3. 面板密码改掉默认值（首次登录会强制改，已覆盖）
+
+### 故障排查
+
+| 症状 | 原因与修复 |
+|---|---|
+| 浏览器打不开面板 | 安全组没放行 8787（最常见）；或 `docker ps` 看容器是否在跑 |
+| 面板能开、调用报错/超时 | 国内机器没配代理 → 见上节"国内服务器必须配代理" |
+| 面板登录说"失败次数过多" | 密码连错 5 次锁 60 秒，等一分钟再输 |
+| 忘记面板密码 | `./data/key_pool_config.json` 里 `panel_password` 写个新明文 → 重启容器 |
+| 启动报"数据文件是一个文件夹" | 旧的文件级挂载残留 → `rm -rf data/pool_data.json && touch data/pool_data.json`（数据会丢，新部署无此问题） |
+| 容器反复重启 | `docker compose logs` 看报错；配置 JSON 写错会有中文提示哪一项不合法 |
+
+### 方式二：直接跑（Linux systemd，不用 Docker）
+
+```bash
+# 1. 装依赖
+git clone https://github.com/10dianai/key-yes.git /opt/key_pool
+cd /opt/key_pool/key_pool
+pip3 install -r requirements.txt
+
+# 2. 首次运行生成默认配置（host 改 0.0.0.0 才能外部访问）
+python3 run.py   # 自动生成 key_pool_config.json 后 Ctrl+C
+sed -i 's/"host": "127.0.0.1"/"host": "0.0.0.0"/' key_pool_config.json
+
+# 3. 注册 systemd 常驻
 sudo tee /etc/systemd/system/key-pool.service <<'EOF'
 [Unit]
 Description=Mistral Key Pool Gateway
 After=network-online.target
 
 [Service]
-WorkingDirectory=/opt/key_pool
-ExecStart=/usr/bin/python3 /opt/key_pool/run.py
+WorkingDirectory=/opt/key_pool/key_pool
+ExecStart=/usr/bin/python3 /opt/key_pool/key_pool/run.py
 Restart=always
 RestartSec=3
 
@@ -207,29 +306,11 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 sudo systemctl enable --now key-pool
+sudo systemctl status key-pool   # 看到 active (running) 即成功
 ```
 
-### Docker（推荐）
-
-```bash
-mkdir -p /opt/key-pool && cd /opt/key-pool
-mkdir data
-# 保存 docker-compose.yml（见仓库 key_pool/docker-compose.yml，核心是挂 ./data:/data）
-docker compose up -d
-docker compose logs -f
-```
-
-首次启动自动在 `./data/key_pool_config.json` 生成默认配置（面板默认密码
-`admin123`，登录后强制修改）。全部状态都在 `./data` 目录里：容器重建/升级
-不丢数据，也避免了文件级挂载的坑。
-
-部署要点：
-- **网络**：海外机器直连（默认配置即直连）；国内机器在 `./data/key_pool_config.json`
-  里加 `"upstream_proxy": "http://host.docker.internal:7897"`（改成实际代理地址）
-- **密钥必改**：公网部署 `pool_api_keys` / `admin_key` 必须换强随机值
-- **HTTPS**：前面挂 nginx/caddy 做 TLS，别裸 HTTP 暴露公网
-- **备份**：备份整个 `./data` 目录即可
-- **升级**：`docker compose pull && docker compose up -d`
+数据文件与配置都在 `/opt/key_pool/key_pool/` 目录下（`pool_data.json`、
+`panel_auth.json`、`key_pool_config.json`、`logs/`），备份这个目录即可。
 
 ## 与注册脚本联动
 

@@ -32,6 +32,24 @@ print(client.chat.completions.create(
 
 完整文档（配置/部署/Docker/安全说明）见 [key_pool/README_KEY_POOL.md](key_pool/README_KEY_POOL.md)。
 
+## 服务器部署（Docker 三步）
+
+```bash
+mkdir -p /opt/key-pool/data && cd /opt/key-pool
+# 创建 docker-compose.yml（内容见 key_pool/docker-compose.yml，就 8 行）
+docker compose up -d
+```
+
+首次启动自动生成默认配置。浏览器打开 `http://服务器IP:8787/` →
+默认密码 `admin123` 登录 → 强制改密 → 导入 Key 使用。
+
+- 海外服务器开箱即用（直连 Mistral）；国内服务器在 `./data/key_pool_config.json`
+  里加 `"upstream_proxy"` 后重启
+- 云控制台安全组放行 **TCP 8787**
+- 改面板密码 = 配置里 `panel_password` 写明文 + 重启（无需算哈希）
+
+详细步骤/日常操作/故障排查见 [key_pool/README_KEY_POOL.md](key_pool/README_KEY_POOL.md) 的"服务器部署"章节。
+
 ## 目录
 
 ```
@@ -40,18 +58,19 @@ key_pool/
 ├── app/        # FastAPI 应用层（鉴权/网关/管理/面板/日志）
 ├── core/       # 核心层：池存储、导入解析、格式转换（可独立测试）
 ├── static/     # 管理面板前端（HTML/JS 独立文件）
-├── tests/      # pytest 套件（111 用例）
+├── tests/      # pytest 套件（125 用例）
 └── Dockerfile / docker-compose.yml
 ```
 
 ## 测试
 
 ```bash
-cd key_pool && python -m pytest tests/   # 111 passed
+cd key_pool && python -m pytest tests/
 ```
 
 ## 安全提示
 
-- 部署前必须修改 `key_pool_config.json` 里的 `pool_api_keys` / `admin_key`
-- 真实密钥写 `key_pool_config.local.json`（已 gitignore）
+- 部署前必须修改 `key_pool/key_pool_config.json` 里的 `pool_api_keys` / `admin_key`
+- 真实密钥写 `key_pool/key_pool_config.local.json`（已 gitignore）
+- 池数据在 `key_pool/pool_data.json`（已 gitignore），含真实 Key，严禁提交
 - 公网部署建议前置 nginx/caddy 做 HTTPS
