@@ -74,6 +74,16 @@ def create_app(settings, store: KeyStore = None, panel_auth: PanelAuth = None) -
     )
     app.state.panel_auth = panel_auth or PanelAuth(settings.panel_auth_file)
 
+    # 面板密码同步：配置文件里写了明文 panel_password 就以它为准（启动时转哈希）。
+    # - 手改配置里的明文 + 重启 = 换密码（对用户最直观）
+    # - 网页里改密码成功后会清空配置里的这行，之后重启不再覆盖
+    if settings.panel_password and not app.state.panel_auth.check_password(settings.panel_password):
+        try:
+            app.state.panel_auth.set_password(settings.panel_password)
+            logger.info("面板密码已从配置文件同步（明文已转哈希存储）")
+        except ValueError as exc:
+            logger.warning("配置里的 panel_password 无效，沿用现有面板密码: %s", exc)
+
     # 请求日志中间件（跳过 /healthz 噪音）
     @app.middleware("http")
     async def access_log(request: Request, call_next):
@@ -98,7 +108,11 @@ def create_app(settings, store: KeyStore = None, panel_auth: PanelAuth = None) -
 
     @app.get("/", include_in_schema=False)
     async def index():
-        return FileResponse(STATIC_DIR / "admin.html")
+        # 面板页面禁止缓存：改版后客户端刷新即生效，不会卡在旧界面
+        return FileResponse(
+            STATIC_DIR / "admin.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     @app.get("/healthz")
     async def healthz():

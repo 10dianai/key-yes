@@ -30,6 +30,7 @@ def make_settings(tmp_path, **overrides) -> Settings:
         upstream_proxy="",
         pool_api_keys=(POOL_KEY,),
         admin_key=ADMIN_KEY,
+        panel_password="",
         default_model="mistral-small-latest",
         models_list=("mistral-small-latest",),
         key_retry_on_rate_limit=3,
@@ -38,6 +39,7 @@ def make_settings(tmp_path, **overrides) -> Settings:
         config_dir=tmp_path,
         panel_auth_file=tmp_path / "panel_auth.json",
         logs_dir=tmp_path / "logs",
+        password_config_source=tmp_path / "key_pool_config.json",
     )
     fields.update(overrides)
     return Settings(**fields)

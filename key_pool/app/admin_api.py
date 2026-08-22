@@ -78,10 +78,64 @@ async def panel_login(request: Request):
         return JSONResponse({"error": "请求体不是合法 JSON"}, 400)
     if auth.check_password(str(body.get("password") or "")):
         logger.info("面板登录成功")
-        return {"ok": True, "token": auth.create_token()}
+        # must_change：当前密码来自配置文件的明文（默认密码/管理员预设），
+        # 提示前端强制要求修改
+        return {
+            "ok": True,
+            "token": auth.create_token(),
+            "must_change": bool(request.app.state.settings.panel_password),
+        }
     auth.record_fail()
     logger.warning("面板登录失败（密码错误）")
     return JSONResponse({"error": "密码错误"}, 401)
+
+
+@ROUTER.post("/admin/panel/change-password")
+async def panel_change_password(request: Request):
+    """修改面板密码（需已登录会话）。成功后自动清空配置文件里的明文密码，
+    之后重启不会被配置覆盖。"""
+    app = request.app
+    auth = app.state.panel_auth
+    token = request.headers.get("x-panel-token", "")
+    if not (token and auth.token_valid(token)):
+        return JSONResponse({"error": "需要登录"}, 401)
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "请求体不是合法 JSON"}, 400)
+    old_password = str(body.get("old_password") or "")
+    new_password = str(body.get("new_password") or "")
+    if not auth.check_password(old_password):
+        return JSONResponse({"error": "旧密码错误"}, 401)
+    try:
+        auth.set_password(new_password)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, 400)
+
+    # 清空配置来源文件里的 panel_password（防止下次重启被配置覆盖回去），
+    # 同时更新内存里的 settings，否则本次运行期间 must_change 判断仍为 True
+    _clear_config_password(app)
+    object.__setattr__(app.state.settings, "panel_password", "")
+
+    # 旧 token 失效，发新 token
+    auth.revoke_token(token)
+    logger.info("面板密码已修改（配置文件中的明文密码已清空）")
+    return {"ok": True, "token": auth.create_token()}
+
+
+def _clear_config_password(app):
+    """把 panel_password 来源文件里的该字段清空（写回，保留其他字段）。"""
+    source = app.state.settings.password_config_source
+    try:
+        data = json.loads(source.read_text(encoding="utf-8-sig"))
+        if "panel_password" in data:
+            data["panel_password"] = ""
+            source.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("清空配置文件里的 panel_password 失败: %s", exc)
 
 
 @ROUTER.post("/admin/panel/logout")

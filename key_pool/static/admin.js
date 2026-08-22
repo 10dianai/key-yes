@@ -13,26 +13,72 @@ function enterPanel() {
 }
 
 function showGate(mode) {
-  // mode: "setup" 首次设置密码 | "login" 登录
+  // mode: "setup" 首次设置密码 | "login" 登录 | "change" 强制修改密码
   const gate = document.getElementById("gate");
   gate.classList.remove("hidden");
-  const isSetup = mode === "setup";
-  document.getElementById("gateTitle").textContent = isSetup ? "初始化面板" : "登录管理面板";
-  document.getElementById("gateDesc").textContent = isSetup
-    ? "首次使用，请设置管理面板密码（至少 6 位）。密码以哈希形式存储在服务端，忘记只能删 panel_auth.json 重置。"
-    : "输入面板密码继续。";
-  document.getElementById("gatePassword2").style.display = isSetup ? "" : "none";
-  document.getElementById("gatePassword").placeholder = isSetup
-    ? "设置密码（至少 6 位）" : "面板密码";
-  document.getElementById("gateMsg").textContent = "";
-  document.getElementById("gateSubmit").textContent = isSetup ? "保存并进入" : "进入";
-  document.getElementById("gatePassword").focus();
+  const title = document.getElementById("gateTitle");
+  const desc = document.getElementById("gateDesc");
+  const p1 = document.getElementById("gatePassword");
+  const p2 = document.getElementById("gatePassword2");
+  const p3 = document.getElementById("gatePasswordNew");
+  const msg = document.getElementById("gateMsg");
+  msg.textContent = "";
+  p3.style.display = "none";
+  if (mode === "setup") {
+    title.textContent = "初始化面板";
+    desc.textContent = "首次使用，请设置管理面板密码（至少 6 位）。";
+    p1.placeholder = "设置密码（至少 6 位）"; p1.value = "";
+    p2.style.display = ""; p2.placeholder = "再输入一次确认"; p2.value = "";
+    document.getElementById("gateSubmit").textContent = "保存并进入";
+  } else if (mode === "change") {
+    title.textContent = "请修改密码";
+    desc.textContent = "当前使用的是默认/预设密码，请设置自己的新密码后继续使用。";
+    p1.placeholder = "旧密码（已自动填入）";
+    p2.style.display = ""; p2.placeholder = "新密码（至少 6 位）"; p2.value = "";
+    p3.style.display = ""; p3.placeholder = "再输入一次新密码"; p3.value = "";
+    document.getElementById("gateSubmit").textContent = "修改并进入";
+  } else {
+    title.textContent = "登录管理面板";
+    desc.textContent = "输入面板密码继续。";
+    p1.placeholder = "面板密码"; p1.value = "";
+    p2.style.display = "none"; p2.value = "";
+    document.getElementById("gateSubmit").textContent = "进入";
+  }
+  p1.focus();
 }
+
+let changeModeToken = "";  // 强制改密流程中暂存的会话 token
 
 async function gateSubmit() {
   const pwd = document.getElementById("gatePassword").value;
   const pwd2 = document.getElementById("gatePassword2").value;
   const msg = document.getElementById("gateMsg");
+
+  // 强制改密流程：框1=旧密码（自动填入）、框2=新密码、框3=确认新密码
+  if (changeModeToken) {
+    const oldPwd = document.getElementById("gatePassword").value;
+    const newPwd = document.getElementById("gatePassword2").value;
+    const confirmPwd = document.getElementById("gatePasswordNew").value;
+    if (!newPwd) { msg.textContent = "请输入新密码"; return; }
+    if (newPwd !== confirmPwd) { msg.textContent = "两次输入的新密码不一致"; return; }
+    const resp = await fetch("/admin/panel/change-password", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Panel-Token": changeModeToken},
+      body: JSON.stringify({old_password: oldPwd, new_password: newPwd}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) { msg.textContent = data.error || ("请求失败 " + resp.status); return; }
+    changeModeToken = "";
+    TOKEN = data.token;
+    sessionStorage.setItem(TOKEN_KEY, TOKEN);
+    document.getElementById("gate").classList.add("hidden");
+    document.getElementById("gatePassword").value = "";
+    document.getElementById("gatePassword2").value = "";
+    document.getElementById("gatePasswordNew").value = "";
+    enterPanel();
+    return;
+  }
+
   const status = await (await fetch("/admin/panel/status")).json();
   const path = status.initialized ? "/admin/panel/login" : "/admin/panel/setup";
   if (path.endsWith("/setup") && pwd !== pwd2) { msg.textContent = "两次输入不一致"; return; }
@@ -42,6 +88,16 @@ async function gateSubmit() {
   });
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) { msg.textContent = data.error || ("请求失败 " + resp.status); return; }
+  // must_change：登录成功但当前密码来自配置文件（默认/预设），强制先改密
+  if (data.must_change) {
+    changeModeToken = data.token;
+    showGate("change");
+    document.getElementById("gatePassword").value = pwd; // 旧密码自动填入
+    document.getElementById("gatePassword2").value = "";
+    document.getElementById("gatePasswordNew").value = "";
+    msg.textContent = "当前是默认密码，请设置你自己的新密码";
+    return;
+  }
   TOKEN = data.token;
   sessionStorage.setItem(TOKEN_KEY, TOKEN);
   document.getElementById("gatePassword").value = "";
@@ -52,6 +108,7 @@ async function gateSubmit() {
 document.getElementById("gateSubmit").onclick = gateSubmit;
 document.getElementById("gatePassword").addEventListener("keydown", e => { if (e.key === "Enter") gateSubmit(); });
 document.getElementById("gatePassword2").addEventListener("keydown", e => { if (e.key === "Enter") gateSubmit(); });
+document.getElementById("gatePasswordNew").addEventListener("keydown", e => { if (e.key === "Enter") gateSubmit(); });
 
 document.getElementById("logout").onclick = async () => {
   await fetch("/admin/panel/logout", {method: "POST", headers: H()});

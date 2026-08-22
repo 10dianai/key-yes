@@ -25,6 +25,7 @@ class Settings:
     upstream_proxy: str
     pool_api_keys: tuple
     admin_key: str
+    panel_password: str          # 面板密码（配置里写明文，启动时自动转哈希）
     default_model: str
     models_list: tuple
     key_retry_on_rate_limit: int
@@ -33,6 +34,7 @@ class Settings:
     config_dir: Path
     panel_auth_file: Path
     logs_dir: Path
+    password_config_source: Path  # panel_password 实际来源文件（清空时用）
 
     @property
     def base_url(self) -> str:
@@ -74,9 +76,12 @@ def load_config(config_file=DEFAULT_CONFIG_FILE) -> Settings:
         raise ConfigError(f"配置文件不是合法 JSON: {path}（第 {exc.lineno} 行: {exc.msg}）") from exc
 
     local = path.parent / LOCAL_CONFIG_FILE
+    local_provides_password = False
     if local.exists():
         try:
-            cfg.update(json.loads(local.read_text(encoding="utf-8-sig")))
+            local_cfg = json.loads(local.read_text(encoding="utf-8-sig"))
+            local_provides_password = "panel_password" in local_cfg
+            cfg.update(local_cfg)
         except json.JSONDecodeError as exc:
             raise ConfigError(
                 f"本地覆盖配置 {local.name} 不是合法 JSON（第 {exc.lineno} 行: {exc.msg}）"
@@ -90,6 +95,9 @@ def load_config(config_file=DEFAULT_CONFIG_FILE) -> Settings:
     admin_key = cfg.get("admin_key")
     if admin_key is not None and not isinstance(admin_key, str):
         raise ConfigError("配置项 admin_key 必须是字符串")
+    panel_password = cfg.get("panel_password")
+    if panel_password is not None and not isinstance(panel_password, str):
+        raise ConfigError("配置项 panel_password 必须是字符串（明文密码，留空表示用面板里改的密码）")
 
     models = cfg.get("models_list")
     if models is None:
@@ -106,6 +114,7 @@ def load_config(config_file=DEFAULT_CONFIG_FILE) -> Settings:
         upstream_proxy=_as_url(cfg.get("upstream_proxy"), "upstream_proxy", "") or "",
         pool_api_keys=tuple(k.strip() for k in pool_keys if k.strip()),
         admin_key=str(admin_key or "").strip(),
+        panel_password=str(panel_password or ""),
         default_model=str(cfg.get("default_model") or "mistral-small-latest"),
         models_list=tuple(models),
         key_retry_on_rate_limit=_as_int(
@@ -118,4 +127,6 @@ def load_config(config_file=DEFAULT_CONFIG_FILE) -> Settings:
         config_dir=config_dir,
         panel_auth_file=config_dir / "panel_auth.json",
         logs_dir=config_dir / "logs",
+        # panel_password 写在哪个文件就清空哪个（网页改密后自动清，防止重启被覆盖）
+        password_config_source=(local if local_provides_password else path),
     )
