@@ -12,6 +12,34 @@ from pathlib import Path
 DEFAULT_CONFIG_FILE = "key_pool_config.json"
 LOCAL_CONFIG_FILE = "key_pool_config.local.json"
 
+# 首次启动（配置文件不存在时）自动生成的默认配置。
+# 海外服务器开箱即用：直连 Mistral、默认面板密码 admin123（登录后强制改）。
+DEFAULT_CONFIG = {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "upstream_base_url": "https://api.mistral.ai",
+    "upstream_proxy": "",
+    "pool_api_keys": [],
+    "admin_key": "",
+    "panel_password": "admin123",
+    "default_model": "mistral-small-latest",
+    "models_list": [],
+    "key_retry_on_rate_limit": 2,
+    "request_timeout_seconds": 300,
+    "data_file": "pool_data.json",
+}
+
+
+def ensure_default_config(config_file) -> Path:
+    """配置文件不存在时生成默认配置（Docker 数据卷挂载场景的首次启动）。"""
+    path = Path(config_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
 
 class ConfigError(ValueError):
     """配置不合法（文件缺失/JSON 损坏/字段类型或取值错误）。"""

@@ -209,20 +209,27 @@ EOF
 sudo systemctl enable --now key-pool
 ```
 
-### Docker
+### Docker（推荐）
 
 ```bash
-cd key_pool
-docker compose up -d --build
+mkdir -p /opt/key-pool && cd /opt/key-pool
+mkdir data
+# 保存 docker-compose.yml（见仓库 key_pool/docker-compose.yml，核心是挂 ./data:/data）
+docker compose up -d
 docker compose logs -f
 ```
 
+首次启动自动在 `./data/key_pool_config.json` 生成默认配置（面板默认密码
+`admin123`，登录后强制修改）。全部状态都在 `./data` 目录里：容器重建/升级
+不丢数据，也避免了文件级挂载的坑。
+
 部署要点：
-- **网络**：海外机器直连即可；国内机器配 `upstream_proxy`（Docker 里用
-  `http://host.docker.internal:7897`）
+- **网络**：海外机器直连（默认配置即直连）；国内机器在 `./data/key_pool_config.json`
+  里加 `"upstream_proxy": "http://host.docker.internal:7897"`（改成实际代理地址）
 - **密钥必改**：公网部署 `pool_api_keys` / `admin_key` 必须换强随机值
 - **HTTPS**：前面挂 nginx/caddy 做 TLS，别裸 HTTP 暴露公网
-- **备份**：`pool_data.json` + `panel_auth.json` 就是全部状态，定期备份即可
+- **备份**：备份整个 `./data` 目录即可
+- **升级**：`docker compose pull && docker compose up -d`
 
 ## 与注册脚本联动
 

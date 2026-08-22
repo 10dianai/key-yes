@@ -56,8 +56,15 @@ def main(argv=None):
     try:
         settings = load_config(args.config)
     except ConfigError as exc:
-        print(f"[配置错误] {exc}", file=sys.stderr)
-        return 2
+        if "不存在" not in str(exc):
+            print(f"[配置错误] {exc}", file=sys.stderr)
+            return 2
+        # 首次启动：生成默认配置再加载（Docker 数据卷挂载场景）
+        from app.config import ensure_default_config
+        ensure_default_config(Path(args.config))
+        print(f"[首次启动] 已生成默认配置 {args.config}（面板默认密码 admin123，"
+              f"登录后强制修改；国内服务器需在配置里补 upstream_proxy）", flush=True)
+        settings = load_config(args.config)
     # 覆盖优先级：命令行参数 > 环境变量（容器部署用 HOST/PORT）> 配置文件。
     # 容器里必须监听 0.0.0.0，否则端口映射的流量进不到容器的 loopback。
     env_host = os.environ.get("HOST")
@@ -68,6 +75,18 @@ def main(argv=None):
         object.__setattr__(settings, "host", host)
     if port:
         object.__setattr__(settings, "port", port)
+
+    # data_file 若是目录（Docker 挂载文件但宿主机没建文件时会变文件夹），明确报错
+    if settings.data_file.is_dir():
+        print(
+            f"[启动失败] 数据文件 {settings.data_file} 是一个文件夹。\n"
+            f"  原因：Docker 按文件挂载时宿主机文件不存在会自动创建同名文件夹。\n"
+            f"  修复：宿主机执行 rm -rf {settings.data_file.name} && "
+            f"touch {settings.data_file.name} 后重启容器；\n"
+            f"  或改用目录挂载（docker-compose.yml 里挂 ./data:/data）。",
+            file=sys.stderr,
+        )
+        return 3
 
     logger = setup_logging(settings, debug=args.dev)
 

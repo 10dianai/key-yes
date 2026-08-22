@@ -1,20 +1,18 @@
 services:
   key-pool:
-    # 直接用 GHCR 镜像（CI 自动构建）；国内机器拉不动可换 build: . 本地构建
+    # GHCR 镜像（CI 自动构建）；拉不动可换 build: . 本地构建
     image: ghcr.io/10dianai/key-yes:main
     # build: .
     container_name: mistral-key-pool
     ports:
       - "8787:8787"
     volumes:
-      # 数据持久化：池数据、面板密码、日志、本地配置覆盖
-      - ./pool_data.json:/data/pool_data.json
-      - ./panel_auth.json:/data/panel_auth.json
-      - ./logs:/data/logs
-      # 覆盖配置（改 pool_api_keys / admin_key / upstream_proxy 在这里）：
-      - ./key_pool_config.local.json:/data/key_pool_config.local.json
+      # 目录挂载：全部状态（配置/池数据/面板密码/日志）都在宿主机 ./data 下，
+      # 容器重建不丢；也避免文件级挂载在宿主机文件缺失时被 Docker 创建成文件夹的坑。
+      # 首次启动会在 ./data 自动生成默认配置（面板默认密码 admin123，登录后强制改）。
+      - ./data:/data
     restart: unless-stopped
-    # 国内机器需要代理时取消注释并修改地址：
+    # 国内机器需要代理时取消注释并改地址：
     # environment:
     #   - HTTP_PROXY=http://host.docker.internal:7897
     #   - HTTPS_PROXY=http://host.docker.internal:7897

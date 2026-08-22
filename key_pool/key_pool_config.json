@@ -2,7 +2,7 @@
   "host": "127.0.0.1",
   "port": 8787,
   "upstream_base_url": "https://api.mistral.ai",
-  "upstream_proxy": "http://127.0.0.1:7897",
+  "upstream_proxy": "",
   "pool_api_keys": [
     "sk-pool-change-me-0001"
   ],
