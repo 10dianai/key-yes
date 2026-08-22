@@ -2,9 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# 先装依赖（利用镜像层缓存）
+# 先装依赖（利用镜像层缓存）；用清华 PyPI 源，国内构建不卡
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
 # 应用代码
 COPY run.py .
