@@ -25,7 +25,18 @@ class PanelAuth:
     # ---- 密码存储 ----
 
     def has_password(self) -> bool:
-        return self.auth_file.exists()
+        """已初始化 = 文件存在且内容是合法的 {salt, hash}。
+
+        空文件（如部署时 touch 出来的）不算已初始化，
+        这样首屏仍会进入"初始化面板"流程而不是死锁在登录框。
+        """
+        if not self.auth_file.exists():
+            return False
+        try:
+            data = json.loads(self.auth_file.read_text(encoding="utf-8-sig"))
+            return bool(data.get("salt") and data.get("hash"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            return False
 
     def _hash(self, password: str, salt_hex: str) -> str:
         return hashlib.pbkdf2_hmac(
